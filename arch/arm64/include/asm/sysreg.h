@@ -247,16 +247,6 @@ asm(
 "	.endm\n"
 );
 
-static inline void config_sctlr_el1(u32 clear, u32 set)
-{
-	u32 val;
-
-	asm volatile("mrs %0, sctlr_el1" : "=r" (val));
-	val &= ~clear;
-	val |= set;
-	asm volatile("msr sctlr_el1, %0" : : "r" (val));
-}
-
 /*
  * Unlike read_cpuid, calls to read_sysreg are never expected to be
  * optimized away or replaced with synthetic values.
@@ -272,6 +262,31 @@ static inline void config_sctlr_el1(u32 clear, u32 set)
 	asm volatile("msr " __stringify(r) ", %0"		\
 		     : : "r" (__val));				\
 } while (0)
+
+/*
+ * For registers without architectural names, or simply unsupported by
+ * GAS.
+ */
+#define read_sysreg_s(r) ({					\
+	u64 __val;						\
+	asm volatile(__mrs_s(r, __val));			\
+	__val;							\
+})
+
+#define write_sysreg_s(v, r) do {				\
+	u64 __val = (u64)(v);					\
+	asm volatile(__msr_s(r, __val));			\
+} while (0)
+
+static inline void config_sctlr_el1(u32 clear, u32 set)
+{
+	u32 val;
+
+	val = read_sysreg(sctlr_el1);
+	val &= ~clear;
+	val |= set;
+	write_sysreg(val, sctlr_el1);
+}
 
 #endif
 
