@@ -1165,7 +1165,7 @@ static int adreno_switch_to_unsecure_mode(struct adreno_device *adreno_dev,
 
 	ret = adreno_ringbuffer_submit_spin(rb, NULL, 2000);
 	if (ret)
-		adreno_spin_idle_debug(adreno_dev,
+		spin_idle_debug(adreno_dev,
 				"Switch to unsecure failed to idle\n");
 
 	return ret;
@@ -1187,7 +1187,7 @@ int adreno_set_unsecured_mode(struct adreno_device *adreno_dev,
 	}
 
 	/* GPU comes up in secured mode, make it unsecured by default */
-	if (adreno_dev->zap_loaded)
+	if (ADRENO_FEATURE(adreno_dev, ADRENO_CONTENT_PROTECTION))
 		ret = adreno_switch_to_unsecure_mode(adreno_dev, rb);
 	else
 		adreno_writereg(adreno_dev,
