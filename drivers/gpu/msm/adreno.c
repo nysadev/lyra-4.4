@@ -1165,7 +1165,7 @@ static int adreno_switch_to_unsecure_mode(struct adreno_device *adreno_dev,
 
 	ret = adreno_ringbuffer_submit_spin(rb, NULL, 2000);
 	if (ret)
-		spin_idle_debug(adreno_dev,
+		adreno_spin_idle_debug(adreno_dev,
 				"Switch to unsecure failed to idle\n");
 
 	return ret;
