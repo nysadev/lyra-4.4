@@ -2232,22 +2232,13 @@ static int a5xx_microcode_load(struct adreno_device *adreno_dev)
 
 	/* Load the zap shader firmware through PIL if its available */
 	if (adreno_dev->gpucore->zap_name && !adreno_dev->zap_loaded) {
-		/*
-		 * subsystem_get() may return -EAGAIN in case system is busy
-		 * and unable to load the firmware. So keep trying since this
-		 * is not a fatal error.
-		 */
-		do {
-			ret = 0;
-			zap_handle_ptr = subsystem_get(adreno_dev->gpucore->zap_name);
+		zap_handle_ptr = subsystem_get(adreno_dev->gpucore->zap_name);
 
-			/* Return error if the zap shader cannot be loaded */
-			if (IS_ERR_OR_NULL(zap_handle_ptr )) {
-				ret = (zap_handle_ptr  == NULL) ? -ENODEV : PTR_ERR(zap_handle_ptr );
-				zap_handle_ptr  = NULL;
-			} else
-				adreno_dev->zap_loaded = 1;
-		} while ((ret == -EAGAIN) && (zap_retry++ < ZAP_RETRY_MAX));
+		/* Return error if the zap shader cannot be loaded */
+		if (IS_ERR_OR_NULL(zap_handle_ptr))
+			return (zap_handle_ptr == NULL) ?
+					-ENODEV : PTR_ERR(zap_handle_ptr);
+		adreno_dev->zap_loaded = 1;
 	}
 
 	return ret;
