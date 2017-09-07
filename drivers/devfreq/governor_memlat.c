@@ -288,7 +288,8 @@ static int devfreq_memlat_get_freq(struct devfreq *df,
 		if (hw->core_stats[i].mem_count)
 			ratio /= hw->core_stats[i].mem_count;
 
-		if (!hw->core_stats[i].freq)
+		if (!hw->core_stats[i].inst_count
+		    || !hw->core_stats[i].freq)
 			continue;
 
 		trace_memlat_dev_meas(dev_name(df->dev.parent),
@@ -297,10 +298,6 @@ static int devfreq_memlat_get_freq(struct devfreq *df,
 					hw->core_stats[i].mem_count,
 					hw->core_stats[i].freq,
 					hw->core_stats[i].stall_pct, ratio);
-
-		if (!hw->core_stats[i].inst_count
-		    || !hw->core_stats[i].freq)
-			continue;
 
 		if (ratio <= node->ratio_ceil
 		    && hw->core_stats[i].freq > max_freq) {
