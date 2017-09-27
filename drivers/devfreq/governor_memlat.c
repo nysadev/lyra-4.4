@@ -300,6 +300,7 @@ static int devfreq_memlat_get_freq(struct devfreq *df,
 					hw->core_stats[i].stall_pct, ratio);
 
 		if (ratio <= node->ratio_ceil
+		    && hw->core_stats[i].stall_pct >= node->stall_floor
 		    && hw->core_stats[i].freq > max_freq) {
 			lat_dev = i;
 			max_freq = hw->core_stats[i].freq;
@@ -324,17 +325,12 @@ static int devfreq_memlat_get_freq(struct devfreq *df,
 	return 0;
 }
 
-gov_attr(ratio_ceil, 1U, 20000U);
+gov_attr(ratio_ceil, 1U, 10000U);
 gov_attr(stall_floor, 0U, 100U);
 
 static struct attribute *memlat_dev_attr[] = {
 	&dev_attr_ratio_ceil.attr,
 	&dev_attr_stall_floor.attr,
-	&dev_attr_freq_map.attr,
-	NULL,
-};
-
-static struct attribute *compute_dev_attr[] = {
 	&dev_attr_freq_map.attr,
 	NULL,
 };
