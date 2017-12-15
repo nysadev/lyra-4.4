@@ -348,27 +348,16 @@ static int _attach_pt(struct kgsl_iommu_pt *iommu_pt,
 	return ret;
 }
 
-static int _iommu_map_single_page_sync_pc(struct kgsl_pagetable *pt,
-		uint64_t gpuaddr, phys_addr_t physaddr, int times,
-		unsigned int flags)
+static int _iommu_map_sync_pc(struct kgsl_pagetable *pt,
+		uint64_t gpuaddr, phys_addr_t physaddr,
+		uint64_t size, unsigned int flags)
 {
 	struct kgsl_iommu_pt *iommu_pt = pt->priv;
-	size_t mapped = 0;
-	int i;
-	int ret = 0;
+	int ret;
 
 	_iommu_sync_mmu_pc(true);
 
-	for (i = 0; i < times; i++) {
-		ret = iommu_map(iommu_pt->domain, gpuaddr + mapped,
-				physaddr, PAGE_SIZE, flags);
-		if (ret)
-			break;
-		mapped += PAGE_SIZE;
-	}
-
-	if (ret)
-		iommu_unmap(iommu_pt->domain, gpuaddr, mapped);
+	ret = iommu_map(iommu_pt->domain, gpuaddr, physaddr, size, flags);
 
 	_iommu_sync_mmu_pc(false);
 
@@ -1689,11 +1678,9 @@ static int _iommu_map_guard_page(struct kgsl_pagetable *pt,
 		physaddr = page_to_phys(kgsl_guard_page);
 	}
 
-	if (!MMU_FEATURE(pt->mmu, KGSL_MMU_PAD_VA))
-		protflags &= ~IOMMU_WRITE;
-
-	return _iommu_map_single_page_sync_pc(pt, gpuaddr, physaddr,
-			pad_size >> PAGE_SHIFT, protflags);
+	return _iommu_map_sync_pc(pt, gpuaddr, physaddr,
+			kgsl_memdesc_guard_page_size(memdesc),
+			protflags & ~IOMMU_WRITE);
 }
 
 static unsigned int _get_protection_flags(struct kgsl_memdesc *memdesc)
@@ -1782,7 +1769,7 @@ static int kgsl_iommu_sparse_dummy_map(struct kgsl_pagetable *pt,
 			0, size, GFP_KERNEL);
 	if (ret == 0) {
 		ret = _iommu_map_sg_sync_pc(pt, memdesc->gpuaddr + offset,
-				sgt.sgl, sgt.nents, map_flags);
+				sgt.sgl, sgt.nents, IOMMU_READ | IOMMU_NOEXEC);
 		sg_free_table(&sgt);
 	}
 
