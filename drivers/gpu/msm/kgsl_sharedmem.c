@@ -803,6 +803,10 @@ void kgsl_memdesc_init(struct kgsl_device *device,
 	if (flags & KGSL_MEMFLAGS_SECURE)
 		flags &= ~((uint64_t) KGSL_MEMFLAGS_USE_CPU_MAP);
 
+	/* Disable IO coherence if it is not supported on the chip */
+	if (!MMU_FEATURE(mmu, KGSL_MMU_IO_COHERENT))
+		flags &= ~((uint64_t) KGSL_MEMFLAGS_IOCOHERENT);
+
 	if (MMU_FEATURE(mmu, KGSL_MMU_NEED_GUARD_PAGE))
 		memdesc->priv |= KGSL_MEMDESC_GUARD_PAGE;
 
@@ -810,7 +814,6 @@ void kgsl_memdesc_init(struct kgsl_device *device,
 		memdesc->priv |= KGSL_MEMDESC_SECURE;
 
 	memdesc->flags = flags;
-	memdesc->pad_to = mmu->va_padding;
 	memdesc->dev = device->dev->parent;
 
 	align = max_t(unsigned int,
