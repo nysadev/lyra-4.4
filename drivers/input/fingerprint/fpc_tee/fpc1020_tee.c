@@ -42,7 +42,6 @@
 #include <linux/mdss_io_util.h>
 #include <linux/cpu_input_boost.h>
 #include <linux/devfreq_boost.h>
-#include <linux/display_state.h>
 
 #define FPC_TTW_HOLD_TIME 2000
 #define FP_UNLOCK_REJECTION_TIMEOUT (FPC_TTW_HOLD_TIME - 500)
@@ -511,10 +510,8 @@ static irqreturn_t fpc1020_irq_handler(int irq, void *handle)
 					msecs_to_jiffies(FPC_TTW_HOLD_TIME));
 	}
 
-	if (!is_display_on()) {
-		cpu_input_boost_kick_wake();
-		devfreq_boost_kick_wake(DEVFREQ_MSM_CPUBW);
-	}
+	cpu_input_boost_kick_wake();
+	devfreq_boost_kick_wake(DEVFREQ_MSM_CPUBW);
 
 	sysfs_notify(&fpc1020->dev->kobj, NULL, dev_attr_irq.attr.name);
 	if (fpc1020->wait_finger_down && fpc1020->fb_black && fpc1020->prepared) {
