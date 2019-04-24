@@ -71,8 +71,8 @@ void mdss_dsi_ulps_suspend_enable(bool enable)
 	if (mdss_pinfo)
 		mdss_pinfo->ulps_suspend_enabled = enable;
 }
-static unsigned int bl_level_soft_limit = 16;
-module_param(bl_level_soft_limit, uint, 0644);
+static unsigned short bl_level_soft_limit = 16;
+module_param(bl_level_soft_limit, ushort, 0644);
 
 void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
 {
