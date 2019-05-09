@@ -188,6 +188,10 @@ static void scan_and_kill(unsigned long pages_needed)
 	}
 	read_unlock(&tasklist_lock);
 
+	/* Pretty unlikely but it can happen */
+	if (unlikely(!nr_victims))
+		return;
+
 	/*
 	 * Calculate the number of tasks that need to be killed and quickly
 	 * release the references to those that'll live.
