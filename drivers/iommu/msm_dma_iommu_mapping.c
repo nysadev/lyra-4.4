@@ -21,6 +21,7 @@
  * @dir - The direction for the unmap.
  * @meta - Backpointer to the meta this guy belongs to.
  * @ref - For reference counting this mapping.
+ * @mem_free_work - Asynchronous worker to free memory.
  *
  * Represents a mapping of one dma_buf buffer to a particular device and address
  * range. There may exist other mappings of this buffer in different devices.
@@ -35,6 +36,7 @@ struct msm_iommu_map {
 	enum dma_data_direction dir;
 	struct msm_iommu_meta *meta;
 	struct kref ref;
+	struct work_struct mem_free_work;
 };
 
 struct msm_iommu_meta {
@@ -43,6 +45,7 @@ struct msm_iommu_meta {
 	struct kref ref;
 	rwlock_t lock;
 	void *buffer;
+	struct work_struct mem_free_work;
 };
 
 static struct rb_root iommu_root;
@@ -119,16 +122,32 @@ static struct msm_iommu_map *msm_iommu_lookup_get(struct msm_iommu_meta *meta,
 	return NULL;
 }
 
+static void msm_iommu_meta_free(struct work_struct *work)
+{
+	struct msm_iommu_meta *meta = container_of(work, typeof(*meta),
+						   mem_free_work);
+
+	kfree(meta);
+}
+
 static void msm_iommu_meta_destroy(struct kref *kref)
 {
 	struct msm_iommu_meta *meta = container_of(kref, typeof(*meta), ref);
-	struct rb_root *root = &iommu_root;
 
 	write_lock(&rb_tree_lock);
-	rb_erase(&meta->node, root);
+	rb_erase(&meta->node, &iommu_root);
 	write_unlock(&rb_tree_lock);
 
-	kfree(meta);
+	schedule_work(&meta->mem_free_work);
+}
+
+static void msm_iommu_map_free(struct work_struct *work)
+{
+	struct msm_iommu_map *map = container_of(work, typeof(*map),
+						 mem_free_work);
+
+	dma_unmap_sg(map->dev, &map->sgl, map->nents, READ_ONCE(map->dir));
+	kfree(map);
 }
 
 static void msm_iommu_map_destroy(struct kref *kref)
@@ -140,13 +159,15 @@ static void msm_iommu_map_destroy(struct kref *kref)
 	list_del(&map->lnode);
 	write_unlock(&meta->lock);
 
-	dma_unmap_sg(map->dev, &map->sgl, map->nents, map->dir);
-	kfree(map);
+	schedule_work(&map->mem_free_work);
 }
 
-static void msm_iommu_map_destroy_noop(struct kref *kref)
+static void msm_iommu_map_destroy_locked(struct kref *kref)
 {
-	/* For when we need to unmap on our own terms */
+	struct msm_iommu_map *map = container_of(kref, typeof(*map), ref);
+
+	list_del(&map->lnode);
+	schedule_work(&map->mem_free_work);
 }
 
 static struct msm_iommu_meta *msm_iommu_meta_create(struct dma_buf *dma_buf)
@@ -160,15 +181,17 @@ static struct msm_iommu_meta *msm_iommu_meta_create(struct dma_buf *dma_buf)
 	meta->buffer = dma_buf->priv;
 	kref_init(&meta->ref);
 	rwlock_init(&meta->lock);
+	INIT_WORK(&meta->mem_free_work, msm_iommu_meta_free);
 	INIT_LIST_HEAD(&meta->maps);
 	msm_iommu_meta_add(meta);
 
 	return meta;
 }
 
-static int __msm_dma_map_sg(struct device *dev, struct scatterlist *sg,
-			    int nents, enum dma_data_direction dir,
-			    struct dma_buf *dma_buf, struct dma_attrs *attrs)
+static inline int __msm_dma_map_sg(struct device *dev, struct scatterlist *sg,
+				   int nents, enum dma_data_direction dir,
+				   struct dma_buf *dma_buf,
+				   struct dma_attrs *attrs)
 {
 	bool late_unmap = !dma_get_attr(DMA_ATTR_NO_DELAYED_UNMAP, attrs);
 	bool extra_meta_ref_taken = false;
@@ -221,6 +244,7 @@ static int __msm_dma_map_sg(struct device *dev, struct scatterlist *sg,
 		map->sgl.dma_address = sg->dma_address;
 		map->sgl.dma_length = sg->dma_length;
 		map->dev = dev;
+		INIT_WORK(&map->mem_free_work, msm_iommu_map_free);
 		INIT_LIST_HEAD(&map->lnode);
 		msm_iommu_add(meta, map);
 	}
@@ -265,8 +289,8 @@ EXPORT_SYMBOL(msm_dma_map_sg_attrs);
 void msm_dma_unmap_sg(struct device *dev, struct scatterlist *sgl, int nents,
 		      enum dma_data_direction dir, struct dma_buf *dma_buf)
 {
-	struct msm_iommu_meta *meta;
 	struct msm_iommu_map *map;
+	struct msm_iommu_meta *meta;
 
 	meta = msm_iommu_meta_lookup_get(dma_buf->priv);
 	if (!meta)
@@ -283,7 +307,7 @@ void msm_dma_unmap_sg(struct device *dev, struct scatterlist *sgl, int nents,
 	 * now but in the future if we go to coherent mapping API we might want
 	 * to call the appropriate API when client asks to unmap.
 	 */
-	map->dir = dir;
+	WRITE_ONCE(map->dir, dir);
 
 	/* Do an extra put to undo msm_iommu_lookup_get */
 	kref_put(&map->ref, msm_iommu_map_destroy);
@@ -297,37 +321,29 @@ EXPORT_SYMBOL(msm_dma_unmap_sg);
 
 int msm_dma_unmap_all_for_dev(struct device *dev)
 {
-	struct msm_iommu_map *map, *map_next;
 	struct rb_root *root = &iommu_root;
-	struct msm_iommu_meta *meta;
 	struct rb_node *meta_node;
-	LIST_HEAD(unmap_list);
 	int ret = 0;
 
 	read_lock(&rb_tree_lock);
 	meta_node = rb_first(root);
 	while (meta_node) {
+		struct msm_iommu_map *map, *map_next;
+		struct msm_iommu_meta *meta;
+
 		meta = rb_entry(meta_node, typeof(*meta), node);
 		write_lock(&meta->lock);
 		list_for_each_entry_safe(map, map_next, &meta->maps, lnode) {
 			if (map->dev != dev)
 				continue;
 
-			/* Do the actual unmapping outside of the locks */
-			if (kref_put(&map->ref, msm_iommu_map_destroy_noop))
-				list_move_tail(&map->lnode, &unmap_list);
-			else
+			if (!kref_put(&map->ref, msm_iommu_map_destroy_locked))
 				ret = -EINVAL;
 		}
 		write_unlock(&meta->lock);
 		meta_node = rb_next(meta_node);
 	}
 	read_unlock(&rb_tree_lock);
-
-	list_for_each_entry_safe(map, map_next, &unmap_list, lnode) {
-		dma_unmap_sg(map->dev, &map->sgl, map->nents, map->dir);
-		kfree(map);
-	}
 
 	return ret;
 }
@@ -345,17 +361,10 @@ void msm_dma_buf_freed(void *buffer)
 		return;
 
 	write_lock(&meta->lock);
-	list_for_each_entry_safe(map, map_next, &meta->maps, lnode) {
-		/* Do the actual unmapping outside of the lock */
-		if (kref_put(&map->ref, msm_iommu_map_destroy_noop))
-			list_move_tail(&map->lnode, &unmap_list);
-	}
+	list_for_each_entry_safe(map, map_next, &meta->maps, lnode)
+		kref_put(&map->ref, msm_iommu_map_destroy_locked);
+	INIT_LIST_HEAD(&meta->maps);
 	write_unlock(&meta->lock);
-
-	list_for_each_entry_safe(map, map_next, &unmap_list, lnode) {
-		dma_unmap_sg(map->dev, &map->sgl, map->nents, map->dir);
-		kfree(map);
-	}
 
 	/* Do an extra put to undo msm_iommu_meta_lookup_get */
 	kref_put(&meta->ref, msm_iommu_meta_destroy);
