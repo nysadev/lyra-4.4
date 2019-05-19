@@ -1,6 +1,8 @@
 #include "xiaomi-sdm660-common.dtsi"
 #include "platina-camera-sensor.dtsi"
 #include "smb1355.dtsi"
+/* Disable SMP2P Remote Debug for production */
+#include "msm-rdbg-disable.dtsi"
 
 &qusb_phy0 {
 	qcom,qusb-phy-init-seq = <0xf8 0x80
