@@ -477,7 +477,7 @@ jump_label_module_notify(struct notifier_block *self, unsigned long val,
 	return notifier_from_errno(ret);
 }
 
-static struct notifier_block jump_label_module_nb = {
+struct notifier_block jump_label_module_nb = {
 	.notifier_call = jump_label_module_notify,
 	.priority = 1, /* higher than tracepoints */
 };
