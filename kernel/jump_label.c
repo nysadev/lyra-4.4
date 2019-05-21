@@ -270,19 +270,6 @@ void __init jump_label_init(void)
 	jump_label_unlock();
 }
 
-/* Disable any jump label entries in __init/__exit code */
-void __init jump_label_invalidate_initmem(void)
-{
-	struct jump_entry *iter_start = __start___jump_table;
-	struct jump_entry *iter_stop = __stop___jump_table;
-	struct jump_entry *iter;
-
-	for (iter = iter_start; iter < iter_stop; iter++) {
-		if (init_section_contains((void *)(unsigned long)iter->code, 1))
-			iter->code = 0;
-	}
-}
-
 #ifdef CONFIG_MODULES
 
 static enum jump_label_type jump_label_init_type(struct jump_entry *entry)

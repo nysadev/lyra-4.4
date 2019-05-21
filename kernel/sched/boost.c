@@ -25,16 +25,6 @@ unsigned int sysctl_sched_boost;
 static int boost_slot;
 #endif // CONFIG_DYNAMIC_STUNE_BOOST
 
-static bool verify_boost_params(int old_val, int new_val)
-{
-	/*
-	 * Boost can only be turned on or off. There is no possiblity of
-	 * switching from one boost type to another or to set the same
-	 * kind of boost several times.
-	 */
-	return !(!!old_val == !!new_val);
-}
-
 int sched_boost_handler(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp,
 		loff_t *ppos)
