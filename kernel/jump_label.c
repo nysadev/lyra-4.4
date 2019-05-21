@@ -84,7 +84,6 @@ void static_key_slow_inc(struct static_key *key)
 {
 	int v, v1;
 
-	cpus_read_lock();
 	STATIC_KEY_CHECK_USE();
 
 	/*
@@ -101,12 +100,11 @@ void static_key_slow_inc(struct static_key *key)
 	 */
 	for (v = atomic_read(&key->enabled); v > 0; v = v1) {
 		v1 = atomic_cmpxchg(&key->enabled, v, v + 1);
-		if (likely(v1 == v)) {
-			cpus_read_unlock();
+		if (likely(v1 == v))
 			return;
-		}
 	}
 
+	cpus_read_lock();
 	jump_label_lock();
 	if (atomic_read(&key->enabled) == 0) {
 		atomic_set(&key->enabled, -1);
