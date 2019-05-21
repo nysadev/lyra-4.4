@@ -228,24 +228,22 @@ static inline int jump_label_apply_nops(struct module *mod)
 
 static inline void static_key_enable(struct static_key *key)
 {
-	STATIC_KEY_CHECK_USE();
+	int count = static_key_count(key);
 
-	if (atomic_read(&key->enabled) != 0) {
-		WARN_ON_ONCE(atomic_read(&key->enabled) != 1);
-		return;
-	}
-	atomic_set(&key->enabled, 1);
+	WARN_ON_ONCE(count < 0 || count > 1);
+
+	if (!count)
+		static_key_slow_inc(key);
 }
 
 static inline void static_key_disable(struct static_key *key)
 {
-	STATIC_KEY_CHECK_USE();
+	int count = static_key_count(key);
 
-	if (atomic_read(&key->enabled) != 1) {
-		WARN_ON_ONCE(atomic_read(&key->enabled) != 0);
-		return;
-	}
-	atomic_set(&key->enabled, 0);
+	WARN_ON_ONCE(count < 0 || count > 1);
+
+	if (count)
+		static_key_slow_dec(key);
 }
 
 #define STATIC_KEY_INIT_TRUE	{ .enabled = ATOMIC_INIT(1) }
