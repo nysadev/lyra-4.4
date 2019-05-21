@@ -109,11 +109,7 @@ void static_key_slow_inc(struct static_key *key)
 	if (atomic_read(&key->enabled) == 0) {
 		atomic_set(&key->enabled, -1);
 		jump_label_update(key);
-		/*
-		 * Ensure that if the above cmpxchg loop observes our positive
-		 * value, it must also observe all the text changes.
-		 */
-		atomic_set_release(&key->enabled, 1);
+		atomic_set(&key->enabled, 1);
 	} else {
 		atomic_inc(&key->enabled);
 	}
@@ -135,10 +131,7 @@ void static_key_enable(struct static_key *key)
 	if (atomic_read(&key->enabled) == 0) {
 		atomic_set(&key->enabled, -1);
 		jump_label_update(key);
-		/*
-		 * See static_key_slow_inc().
-		 */
-		atomic_set_release(&key->enabled, 1);
+		atomic_set(&key->enabled, 1);
 	}
 	jump_label_unlock();
 	cpus_read_unlock();
